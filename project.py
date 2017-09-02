@@ -4,7 +4,7 @@ app = Flask(__name__)
 
 from sqlalchemy import create_engine, asc
 from sqlalchemy.orm import sessionmaker
-from database_setup import Base, Restaurant, MenuItem
+from database_setup import Base, Restaurant, MenuItem, User
 
 from flask import session as login_session
 import random, string
@@ -20,7 +20,7 @@ CLIENT_ID = json.loads(
     open('/vagrant/client_secrets.json', 'r').read())['web']['client_id']
 
 # Connect to Database and create database session
-engine = create_engine('sqlite:///restaurantmenu.db')
+engine = create_engine('sqlite:///restaurantmenuwithusers.db')
 Base.metadata.bind = engine
 
 DBSession = sessionmaker(bind=engine)
@@ -82,10 +82,10 @@ def gconnect():
         response.headers['Content-Type'] = 'application/json'
         return response
 
-    #Check to see if user is already logged in
-    stored_credentials = login_session.get('credentials')
+    # Check to see if user is already logged in
+    stored_access_token = login_session.get('access_token')
     stored_gplus_id = login_session.get('gplus_id')
-    if (stored_credentials is not None and gplus_id == stored_gplus_id):
+    if (stored_access_token is not None and gplus_id == stored_gplus_id):
         response = make_response(json.dumps('Current user is already connected.'), 200)
         response.headers['Content-Type'] = 'application/json'
 
@@ -104,6 +104,12 @@ def gconnect():
     login_session['picture'] = data['picture']
     login_session['email'] = data['email']
 
+    # see if user exists, if it doesn't make a new one
+    user_id = getUserID(login_session['email'])
+    if not user_id:
+        user_id = createUser(login_session)
+    login_session['user_id'] = user_id
+
     output = ''
     output += '<h1>Welcome, '
     output += login_session['username']
@@ -114,6 +120,30 @@ def gconnect():
     flash("you are now logged in as %s" % login_session['username'])
     print "done!"
     return output
+
+
+# User Helper Functions
+def createUser(login_session):
+    newUser = User(name=login_session['username'], email=login_session[
+        'email'], picture=login_session['picture'])
+    session.add(newUser)
+    session.commit()
+    user = session.query(User).filter_by(email=login_session['email']).one()
+    return user.id
+
+
+def getUserInfo(user_id):
+    user = session.query(User).filter(id=user_id).one()
+    return user
+
+
+def getUserID(email):
+    try:
+        user = session.query(User).filter_by(email=email).all()
+        return user.id
+    except:
+        return None
+
 
 @app.route('/gdisconnect')
 def gdisconnect():
@@ -145,6 +175,7 @@ def gdisconnect():
         response.headers['Content-Type'] = 'application/json'
         return response
 
+
 # JSON APIs to view Restaurant Information
 @app.route('/restaurant/<int:restaurant_id>/menu/JSON')
 def restaurantMenuJSON(restaurant_id):
@@ -170,16 +201,20 @@ def restaurantsJSON():
 @app.route('/restaurant/')
 def showRestaurants():
     restaurants = session.query(Restaurant).order_by(asc(Restaurant.name))
-    return render_template('restaurants.html', restaurants=restaurants)
+    if 'username' not in login_session:
+        return render_template('publicrestaurants.html', restaurants=restaurants)
+    else:
+        return render_template('restaurants.html', restaurants=restaurants)
 
 
 # Create a new restaurant
 @app.route('/restaurant/new/', methods=['GET', 'POST'])
 def newRestaurant():
     if 'username' not in login_session:
-        return redirect('/login')
+        return redirect(url_for('showLogin'))
     if request.method == 'POST':
-        newRestaurant = Restaurant(name=request.form['name'])
+        newRestaurant = Restaurant(name=request.form['name'],
+                                   user_id=login_session['user_id'])
         session.add(newRestaurant)
         flash('New Restaurant %s Successfully Created' % newRestaurant.name)
         session.commit()
@@ -194,6 +229,9 @@ def editRestaurant(restaurant_id):
     if 'username' not in login_session:
         return redirect('/login')
     editedRestaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
+    if editedRestaurant.user_id != login_session['user_id']:
+        flash('You are not authorized to edit this Restaurant')
+        return redirect(url_for('showRestaurants'))
     if request.method == 'POST':
         if request.form['name']:
             editedRestaurant.name = request.form['name']
