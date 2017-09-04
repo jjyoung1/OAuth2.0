@@ -20,7 +20,7 @@ CLIENT_ID = json.loads(
     open('/vagrant/client_secrets.json', 'r').read())['web']['client_id']
 
 # Connect to Database and create database session
-engine = create_engine('sqlite:///restaurantmenuwithusers.db')
+engine = create_engine('sqlite:////vagrant/restaurantmenuwithusers.db')
 Base.metadata.bind = engine
 
 DBSession = sessionmaker(bind=engine)
@@ -133,13 +133,13 @@ def createUser(login_session):
 
 
 def getUserInfo(user_id):
-    user = session.query(User).filter(id=user_id).one()
+    user = session.query(User).filter_by(id=user_id).one()
     return user
 
 
 def getUserID(email):
     try:
-        user = session.query(User).filter_by(email=email).all()
+        user = session.query(User).filter_by(email=email).one()
         return user.id
     except:
         return None
@@ -247,6 +247,9 @@ def deleteRestaurant(restaurant_id):
     if 'username' not in login_session:
         return redirect('/login')
     restaurantToDelete = session.query(Restaurant).filter_by(id=restaurant_id).one()
+    if restaurantToDelete.user_id != login_session['user_id']:
+        flash("You are not authorized to delete this restaurant")
+        return  redirect(url_for('showRestaurants'))
     if request.method == 'POST':
         session.delete(restaurantToDelete)
         flash('%s Successfully Deleted' % restaurantToDelete.name)
@@ -262,7 +265,11 @@ def deleteRestaurant(restaurant_id):
 def showMenu(restaurant_id):
     restaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
     items = session.query(MenuItem).filter_by(restaurant_id=restaurant_id).all()
-    return render_template('menu.html', items=items, restaurant=restaurant)
+    creator = getUserInfo(restaurant.user_id)
+    if 'username' not in login_session:
+        return render_template('publicmenu.html', items=items, restaurant=restaurant, creator=creator)
+    else:
+        return render_template('menu.html', items=items, restaurant=restaurant, creator=creator)
 
 
 # Create a new menu item
@@ -271,9 +278,14 @@ def newMenuItem(restaurant_id):
     if 'username' not in login_session:
         return redirect('/login')
     restaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
+    if (restaurant.user_id != login_session['user_id']):
+        flash("You are not authorized to create a new menu item")
+        return redirect('showMenu', restaurant_id=restaurant_id)
     if request.method == 'POST':
+
         newItem = MenuItem(name=request.form['name'], description=request.form['description'],
                            price=request.form['price'], course=request.form['course'], restaurant_id=restaurant_id)
+        newItem.user_id = login_session['user_id']
         session.add(newItem)
         session.commit()
         flash('New Menu %s Item Successfully Created' % (newItem.name))
@@ -288,7 +300,9 @@ def editMenuItem(restaurant_id, menu_id):
     if 'username' not in login_session:
         return redirect('/login')
     editedItem = session.query(MenuItem).filter_by(id=menu_id).one()
-    restaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
+    if (editedItem.user_id != login_session['user_id']):
+        flash("You're not authorized to edit this menu")
+        return redirect(url_for('showMenu', restaurant_id=restaurant_id))
     if request.method == 'POST':
         if request.form['name']:
             editedItem.name = request.form['name']
@@ -313,6 +327,9 @@ def deleteMenuItem(restaurant_id, menu_id):
         return redirect('/login')
     restaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
     itemToDelete = session.query(MenuItem).filter_by(id=menu_id).one()
+    if (itemToDelete.user_id != login_session['user_id']):
+        flash("You're not authorized to edit this menu item")
+        return redirect(url_for('showMenu', restaurant_id=restaurant_id))
     if request.method == 'POST':
         session.delete(itemToDelete)
         session.commit()
