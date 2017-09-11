@@ -1,14 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<link href='http://fonts.googleapis.com/css?family=Roboto:400,300,700' rel='stylesheet' type='text/css'>
-		<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
-		<link rel=stylesheet type=text/css href="{{ url_for('static', filename='styles.css') }}">
-	</head>
-	<body>
-		<div class="container">
-			{% block content %}
-			{% endblock %}
-		</div>
-	</body>
+<head>
+    <link href='http://fonts.googleapis.com/css?family=Roboto:400,300,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+    <link rel=stylesheet type=text/css href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <div class="row top-menu">
+        <div class="col-md-6">
+            <a href="{{ url_for('showRestaurants') }}">
+                <span class="glyphicon glyphicon-home" area-hidden="true"></span>
+                Show All Restaurants
+            </a>
+        </div>
+        <div class="col-md-6 text-right">
+            {% if 'username' not in session %}
+                <a href="{{ url_for('showLogin') }}">Click Her to Log in</a>
+            {% else %}
+                <a href="{{ url_for('disconnect') }}">Disconnect</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% block content %}
+    {% endblock %}
+</div>
+</body>
 </html>
